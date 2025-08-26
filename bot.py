@@ -2,22 +2,22 @@ import logging
 import os
 from io import BytesIO
 
-from dotenv import load_dotenv
 from openai import OpenAI
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
+from flask import Flask
 
 # ---------- Настройка ----------
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# Получаем токены из переменных окружения Render
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 if not OPENAI_API_KEY or not TELEGRAM_BOT_TOKEN:
-    raise RuntimeError("Не заданы OPENAI_API_KEY и/или TELEGRAM_BOT_TOKEN в .env")
+    raise RuntimeError("Не заданы OPENAI_API_KEY и/или TELEGRAM_BOT_TOKEN в переменных окружения Render")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -95,7 +95,15 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.exception("Voice handling error")
         await update.message.reply_text(f"Ошибка при обработке голосового: {e}")
 
-def main():
+# ---------- Flask сервер для Render ----------
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "Bot is running! ✅"
+
+def start_bot():
+    """Запуск Telegram бота"""
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
@@ -104,17 +112,14 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    main()
-import os
-import telegram
-from flask import Flask
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running!"
-
-if __name__ == '__main__':
+    # Запускаем и бота, и Flask сервер
+    import threading
+    
+    # Запускаем бота в отдельном потоке
+    bot_thread = threading.Thread(target=start_bot, daemon=True)
+    bot_thread.start()
+    
+    # Запускаем Flask сервер (обязательно для Render)
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    log.info(f"Starting Flask server on port {port}")
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
