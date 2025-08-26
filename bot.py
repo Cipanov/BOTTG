@@ -8,7 +8,6 @@ from telegram.constants import ChatAction
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
-from flask import Flask
 
 # ---------- Настройка ----------
 # Получаем токены из переменных окружения Render
@@ -40,22 +39,23 @@ async def send_typing(ctx: ContextTypes.DEFAULT_TYPE, chat_id: int):
         pass
 
 async def generate_text_reply(user_text: str) -> str:
-    response = client.responses.create(
+    # ИСПРАВЛЕННЫЙ МЕТОД - используем chat.completions вместо responses
+    response = client.chat.completions.create(
         model=OPENAI_MODEL,
-        input=[
-            {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
-            {"role": "user", "content": [{"type": "text", "text": user_text}]},
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_text}
         ],
         temperature=0.6,
-        max_output_tokens=600,
+        max_tokens=600,
     )
-    return response.output_text.strip()
+    return response.choices[0].message.content.strip()
 
 async def transcribe_voice(bytes_data: bytes, filename: str = "voice.ogg") -> str:
     f = BytesIO(bytes_data)
     f.name = filename
     transcript = client.audio.transcriptions.create(
-        model="gpt-4o-mini-transcribe",
+        model="whisper-1",  # Исправлено на правильное имя модели
         file=f,
     )
     return transcript.text.strip()
@@ -76,7 +76,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
     except Exception as e:
         log.exception("OpenAI error")
-        await update.message.reply_text(f"Ошибка: {e}")
+        await update.message.reply_text("Извините, произошла ошибка. Попробуйте позже.")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     voice = update.message.voice
@@ -90,14 +90,13 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         audio_bytes = bio.getvalue()
         text = await transcribe_voice(audio_bytes)
         reply = await generate_text_reply(text)
-        await update.message.reply_text(f"📝 Расшифровка: {text}\n\n💬 Ответ: {reply}")
+        await update.message.reply_text(f"🎤 Ваше сообщение: {text}\n\n💬 Ответ: {reply}")
     except Exception as e:
         log.exception("Voice handling error")
-        await update.message.reply_text(f"Ошибка при обработке голосового: {e}")
+        await update.message.reply_text("Ошибка при обработке голосового сообщения")
 
 # ---------- Запуск бота ----------
-def start_bot():
-    """Запуск Telegram бота"""
+def main():
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
@@ -105,15 +104,5 @@ def start_bot():
     log.info("Bot started polling...")
     app.run_polling()
 
-# ---------- Flask сервер для Render ----------
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return "Bot is running! ✅"
-
-# ---------- Главный запуск ----------
 if __name__ == "__main__":
-    # Просто запускаем бота - Flask не нужен для polling режима
-    log.info("Starting Telegram bot...")
-    start_bot()
+    main()
