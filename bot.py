@@ -1,6 +1,7 @@
 import logging
 import os
 from io import BytesIO
+import time
 
 from openai import OpenAI
 from telegram import Update
@@ -39,7 +40,6 @@ async def send_typing(ctx: ContextTypes.DEFAULT_TYPE, chat_id: int):
         pass
 
 async def generate_text_reply(user_text: str) -> str:
-    # ИСПРАВЛЕННЫЙ МЕТОД - используем chat.completions вместо responses
     response = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
@@ -55,7 +55,7 @@ async def transcribe_voice(bytes_data: bytes, filename: str = "voice.ogg") -> st
     f = BytesIO(bytes_data)
     f.name = filename
     transcript = client.audio.transcriptions.create(
-        model="whisper-1",  # Исправлено на правильное имя модели
+        model="whisper-1",
         file=f,
     )
     return transcript.text.strip()
@@ -95,14 +95,29 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.exception("Voice handling error")
         await update.message.reply_text("Ошибка при обработке голосового сообщения")
 
-# ---------- Запуск бота ----------
+# ---------- Запуск бота с обработкой ошибок ----------
 def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    log.info("Bot started polling...")
-    app.run_polling()
+    max_retries = 5
+    retry_delay = 10  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+            app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+            
+            log.info(f"Starting bot (attempt {attempt + 1}/{max_retries})...")
+            app.run_polling()
+            
+        except Exception as e:
+            log.error(f"Bot failed with error: {e}")
+            if attempt < max_retries - 1:
+                log.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                log.error("Max retries exceeded. Bot stopped.")
+                raise
 
 if __name__ == "__main__":
     main()
