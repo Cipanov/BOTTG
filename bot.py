@@ -2,7 +2,6 @@ import logging
 import os
 from io import BytesIO
 import time
-import asyncio
 
 from openai import OpenAI
 from telegram import Update
@@ -97,35 +96,27 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ошибка при обработке голосового сообщения")
 
 # ---------- Запуск бота ----------
-async def main():
-    """Основная асинхронная функция запуска"""
-    max_retries = 5
-    retry_delay = 10  # seconds
-    
-    for attempt in range(max_retries):
-        try:
-            # Создаем приложение
-            application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-            
-            # Добавляем обработчики
-            application.add_handler(CommandHandler("start", start))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-            application.add_handler(MessageHandler(filters.VOICE, handle_voice))
-            
-            log.info(f"Starting bot (attempt {attempt + 1}/{max_retries})...")
-            
-            # Запускаем бота
-            await application.run_polling()
-            
-        except Exception as e:
-            log.error(f"Bot failed with error: {e}")
-            if attempt < max_retries - 1:
-                log.info(f"Retrying in {retry_delay} seconds...")
-                await asyncio.sleep(retry_delay)
-            else:
-                log.error("Max retries exceeded. Bot stopped.")
-                raise
+def main():
+    """Основная функция запуска"""
+    try:
+        # Создаем приложение
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        
+        # Добавляем обработчики
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+        application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+        
+        log.info("Starting bot...")
+        
+        # Запускаем бота
+        application.run_polling()
+        
+    except Exception as e:
+        log.error(f"Bot failed with error: {e}")
+        log.info("Restarting in 10 seconds...")
+        time.sleep(10)
+        main()  # Перезапускаем
 
 if __name__ == "__main__":
-    # Запускаем асинхронную функцию
-    asyncio.run(main())
+    main()
