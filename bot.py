@@ -95,6 +95,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.exception("Voice handling error")
         await update.message.reply_text(f"Ошибка при обработке голосового: {e}")
 
+# ---------- Запуск бота ----------
+def start_bot():
+    """Запуск Telegram бота"""
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    log.info("Bot started polling...")
+    app.run_polling()
+
 # ---------- Flask сервер для Render ----------
 flask_app = Flask(__name__)
 
@@ -102,24 +112,8 @@ flask_app = Flask(__name__)
 def home():
     return "Bot is running! ✅"
 
-def start_bot():
-    """Запуск Telegram бота"""
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    log.info("Bot started")
-    app.run_polling()
-
+# ---------- Главный запуск ----------
 if __name__ == "__main__":
-    # Запускаем и бота, и Flask сервер
-    import threading
-    
-    # Запускаем бота в отдельном потоке
-    bot_thread = threading.Thread(target=start_bot, daemon=True)
-    bot_thread.start()
-    
-    # Запускаем Flask сервер (обязательно для Render)
-    port = int(os.environ.get('PORT', 5000))
-    log.info(f"Starting Flask server on port {port}")
-    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    # Просто запускаем бота - Flask не нужен для polling режима
+    log.info("Starting Telegram bot...")
+    start_bot()
